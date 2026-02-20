@@ -1,0 +1,14 @@
+{
+  "name": "text-to-voice",
+  "version": "1.0.0",
+  "description": "Simple CLI for speaking text and generating MP3 from text",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "help": "node index.js --help"
+  },
+  "dependencies": {
+    "gtts": "^0.2.1",
+    "say": "^0.16.0"
+  }
+}
