@@ -15,7 +15,7 @@ O'zbek tilidagi matnni ovozga aylantirish uchun Node.js CLI vositasi.
 ## O'rnatish
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/muzaffarbekmustafayev/TextToVoice.git
 cd TextToVoice
 npm install
 ```
