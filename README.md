@@ -1,72 +1,136 @@
-# TextToVoice
+# 🔊 TextToVoice — Uzbek TTS CLI
 
-A simple Node.js Text-to-Speech CLI.
+O'zbek tilidagi matnni ovozga aylantirish uchun Node.js CLI vositasi.
 
-This project supports two modes:
-- Speak text in real time (`say`)
-- Generate an MP3 file from text (`gtts`)
+## Xususiyatlar
 
-## Requirements
+- **4 ta engine** — OpenAI, Google TTS, Coqui (local), tizim TTS (`espeak`/`festival`)
+- **Matn normalizatsiyasi** — `o'` → `oʻ`, `g'` → `gʻ`, raqamlar → so'zlar
+- **Aksent profillari** — `uzbek`, `toshkent`, `samarqand`, `formal`, `kitob` (OpenAI)
+- **Smart tokenizer** — matnni gaplarga bo'lib, natural pauzalar bilan o'qish
+- **Stdin qo'llab-quvvatlash** — pipe orqali matn uzatish
 
-- Node.js 18+
-- npm
+---
 
-For real-time speech on Linux, you may need a system TTS engine:
-- `festival` or `espeak`
-
-If they are not installed, you can still generate MP3 files using `--output`.
-
-## Installation
+## O'rnatish
 
 ```bash
+git clone <repo-url>
+cd TextToVoice
 npm install
 ```
 
-## Quick Start
-
-Show help:
-
+**OpenAI engine uchun:**
 ```bash
-npm run help
+npm install openai
+export OPENAI_API_KEY="sk-..."
 ```
 
-Speak text:
-
+**Coqui engine uchun:**
 ```bash
-npm start -- --text "Hello, world"
+pip install TTS          # Coqui TTS CLI
+npm run server           # Node.js server ishga tushadi: http://localhost:8000
 ```
 
-Speak with a specific voice and speed:
+---
+
+## Tezkor ishlatish
 
 ```bash
-npm start -- --text "Test message" --voice "Microsoft Zira Desktop" --speed 1.1
+# Google TTS — bepul, API key shart emas
+node index.js -t "Assalomu alaykum" -e gtts -o salom.mp3
+
+# OpenAI TTS — eng yuqori sifat
+node index.js -t "Salom dunyo" -e openai -o salom.mp3
+
+# Aksent bilan
+node index.js -t "Salom" -e openai -a toshkent -o salom.mp3
+
+# Tizim TTS — jonli eshitish (fayl saqlanmaydi)
+node index.js -t "Salom dunyo. Qalaysiz?" -e say
+
+# Coqui — local server orqali
+node index.js -t "Salom" -e coqui -o salom.mp3
+
+# Stdin orqali
+echo "Salom dunyo" | node index.js -e gtts -o salom.mp3
+
+# Barcha engine'lar haqida ma'lumot
+node index.js --info
 ```
 
-Generate MP3:
+---
 
-```bash
-npm start -- --text "Hello everyone" --lang en --output ./audio/hello.mp3
+## Parametrlar
+
+| Parametr | Qisqa | Tavsif | Default |
+|---|---|---|---|
+| `--text` | `-t` | Ovozga aylantiriladigan matn | — |
+| `--engine` | `-e` | TTS engine | `gtts` |
+| `--output` | `-o` | Chiqish fayl yo'li (`.mp3`) | — |
+| `--voice` | `-v` | Ovoz turi | `alloy` |
+| `--speed` | `-s` | O'qish tezligi (`0.25`–`4.0`) | `1` |
+| `--accent` | `-a` | Aksent profili (OpenAI) | `uzbek` |
+| `--lang` | — | gTTS tili | `uz` |
+| `--model` | — | OpenAI model | `gpt-4o-mini-tts` |
+| `--url` | — | Coqui server manzili | `http://localhost:8000/tts` |
+| `--pause` | — | Gaplar orasidagi pauza (ms) | `150` |
+| `--no-normalize` | — | Normalizatsiyani o'chirish | — |
+| `--info` | — | Engine'lar haqida ma'lumot | — |
+| `--help` | `-h` | Yordam | — |
+
+---
+
+## Engine'lar
+
+| Engine | Sifat | Narx | MP3 | Jonli |
+|---|---|---|---|---|
+| `openai` | ⭐⭐⭐⭐⭐ | Pullik | ✅ | ❌ |
+| `coqui` | ⭐⭐⭐⭐⭐ | Bepul (local) | ✅ | ❌ |
+| `gtts` | ⭐⭐ | Bepul | ✅ | ❌ |
+| `say` | ⭐⭐ | Bepul | ❌ | ✅ |
+
+### OpenAI aksent profillari
+
+| Profil | Tavsif |
+|---|---|
+| `uzbek` | Standart o'zbek (default) |
+| `toshkent` | Toshkent shahar aksenti |
+| `samarqand` | Samarqand viloyat aksenti |
+| `formal` | Rasmiy / yangiliklar uslubi |
+| `kitob` | Audiobook uslubi |
+
+---
+
+## Loyiha strukturasi
+
+```
+TextToVoice/
+├── cli/
+│   ├── args.js       — CLI argumentlarini parse qilish
+│   ├── colors.js     — Terminal rang kodlari
+│   └── ui.js         — Help, progress bar, engine info
+├── engine/
+│   ├── openai.js     — OpenAI TTS
+│   ├── gtts.js       — Google Translate TTS
+│   ├── coqui.js      — Coqui TTS (local server client)
+│   └── say.js        — Tizim TTS (espeak/festival)
+├── text/
+│   ├── normalize.js  — Matn normalizatsiyasi
+│   └── tokenizer.js  — Gaplarga bo'lish
+├── server.js         — Coqui TTS server (Express + Coqui CLI)
+├── index.js          — CLI entry point
+└── package.json
 ```
 
-## CLI Arguments
+## Matn pipeline
 
-- `--text` required. Text to convert to speech.
-- `--voice` optional. Voice name for `say`.
-- `--speed` optional. Speech rate (default: `1`).
-- `--lang` optional. Language code for `gtts` (default: `uz`).
-- `--output` optional. If provided, saves output as MP3.
-- `--help` shows usage information.
-
-## Troubleshooting
-
-If you see `spawn festival ENOENT` or `spawn espeak ENOENT`:
-1. Install `festival` or `espeak` on your system.
-2. Or use MP3 mode:
-
-```bash
-npm start -- --text "Hello" --lang en --output ./audio/hello.mp3
+```
+input → normalize → numbersToWords → splitIntoChunks → TTS engine → audio
 ```
 
-## License
+---
 
-For personal/educational use.
+## Litsenziya
+
+MIT

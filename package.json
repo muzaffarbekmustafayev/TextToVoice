@@ -1,14 +1,36 @@
 {
   "name": "text-to-voice",
-  "version": "1.0.0",
-  "description": "Simple CLI for speaking text and generating MP3 from text",
+  "version": "2.0.0",
+  "description": "Professional Uzbek TTS CLI — matnni ovozga aylantirish (OpenAI, gTTS, say)",
   "main": "index.js",
+  "bin": {
+    "tts": "./index.js"
+  },
   "scripts": {
     "start": "node index.js",
-    "help": "node index.js --help"
+    "server": "node server.js",
+    "help": "node index.js --help",
+    "info": "node index.js --info",
+    "test:gtts": "node index.js --text \"Assalomu alaykum dunyo\" --engine gtts --output ./audio/test_gtts.mp3",
+    "test:say": "node index.js --text \"Salom dunyo. Qalaysiz?\" --engine say",
+    "test:openai": "node index.js --text \"Assalomu alaykum\" --engine openai --voice alloy --output ./audio/test_openai.mp3"
   },
+  "keywords": [
+    "tts",
+    "uzbek",
+    "text-to-speech",
+    "openai",
+    "gtts",
+    "cli"
+  ],
+  "author": "Muzaffarbek",
+  "license": "MIT",
   "dependencies": {
+    "express": "^4.22.1",
     "gtts": "^0.2.1",
     "say": "^0.16.0"
+  },
+  "optionalDependencies": {
+    "openai": "^4.0.0"
   }
 }

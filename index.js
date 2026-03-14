@@ -1,197 +1,105 @@
+#!/usr/bin/env node
+
 const fs = require('fs');
-const path = require('path');
-const { spawnSync } = require('child_process');
-const say = require('say');
-const gTTS = require('gtts');
+const { parseArgs }                        = require('./cli/args');
+const { printHelp, printEngineInfo, showProgress } = require('./cli/ui');
+const C                                    = require('./cli/colors');
+const { processText }                      = require('./text/normalize');
+const { splitIntoChunks }                  = require('./text/tokenizer');
 
-function parseArgs(argv) {
-  const options = {
-    text: '',
-    voice: undefined,
-    speed: 1,
-    lang: 'uz',
-    output: undefined,
-    help: false,
-  };
+const engines = {
+  gtts:   require('./engine/gtts'),
+  say:    require('./engine/say'),
+  openai: require('./engine/openai'),
+  coqui:  require('./engine/coqui'),
+};
 
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-
-    if (arg === '--help' || arg === '-h') {
-      options.help = true;
-      continue;
-    }
-
-    if (arg.startsWith('--text=')) {
-      options.text = arg.slice('--text='.length).trim();
-      continue;
-    }
-
-    if (arg === '--text') {
-      options.text = (argv[i + 1] || '').trim();
-      i += 1;
-      continue;
-    }
-
-    if (arg.startsWith('--voice=')) {
-      const voice = arg.slice('--voice='.length).trim();
-      options.voice = voice || undefined;
-      continue;
-    }
-
-    if (arg === '--voice') {
-      const voice = (argv[i + 1] || '').trim();
-      options.voice = voice || undefined;
-      i += 1;
-      continue;
-    }
-
-    if (arg.startsWith('--speed=')) {
-      options.speed = Number(arg.slice('--speed='.length));
-      continue;
-    }
-
-    if (arg === '--speed') {
-      options.speed = Number(argv[i + 1]);
-      i += 1;
-      continue;
-    }
-
-    if (arg.startsWith('--lang=')) {
-      const lang = arg.slice('--lang='.length).trim();
-      options.lang = lang || 'uz';
-      continue;
-    }
-
-    if (arg === '--lang') {
-      const lang = (argv[i + 1] || '').trim();
-      options.lang = lang || 'uz';
-      i += 1;
-      continue;
-    }
-
-    if (arg.startsWith('--output=')) {
-      const output = arg.slice('--output='.length).trim();
-      options.output = output || undefined;
-      continue;
-    }
-
-    if (arg === '--output') {
-      const output = (argv[i + 1] || '').trim();
-      options.output = output || undefined;
-      i += 1;
-      continue;
-    }
-  }
-
-  return options;
-}
-
-function printHelp() {
-  console.log(`TextToVoice CLI
-
-Usage:
-  node index.js --text "Salom dunyo"
-  node index.js --text "Salom" --voice "Microsoft Zira Desktop" --speed 1.1
-  node index.js --text "Assalomu alaykum" --lang uz --output ./audio/salom.mp3
-
-Options:
-  --text    Required. Ovozga aylantiriladigan matn
-  --voice   Optional. say kutubxonasi uchun voice nomi
-  --speed   Optional. O'qish tezligi (default: 1)
-  --lang    Optional. gTTS tili (default: uz)
-  --output  Optional. Berilsa MP3 fayl saqlanadi (gTTS ishlatiladi)
-  --help    Yordam ma'lumoti
-`);
-}
-
-function isSystemTtsAvailable() {
-  if (process.platform !== 'linux') {
-    return true;
-  }
-
-  const check = spawnSync('sh', ['-c', 'command -v festival >/dev/null 2>&1 || command -v espeak >/dev/null 2>&1']);
-  return check.status === 0;
-}
-
-function speakWithSay(text, voice, speed) {
-  return new Promise((resolve, reject) => {
-    say.speak(text, voice, speed, (err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-
-      resolve();
-    });
-  });
-}
-
-function saveWithGTTS(text, lang, output) {
-  return new Promise((resolve, reject) => {
-    const outputPath = path.resolve(output);
-    const outputDir = path.dirname(outputPath);
-
-    fs.mkdirSync(outputDir, { recursive: true });
-
-    const tts = new gTTS(text, lang);
-    tts.save(outputPath, (err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-
-      resolve(outputPath);
-    });
-  });
+async function readStdin() {
+  if (process.stdin.isTTY) return '';
+  let data = '';
+  for await (const chunk of process.stdin) data += chunk;
+  return data.trim();
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  if (args.help) {
-    printHelp();
+  if (!args.text) args.text = await readStdin();
+  if (args.help)  { printHelp(); return; }
+  if (args.info)  { printEngineInfo(engines); return; }
+
+  if (!args.text) {
+    console.error(`\n${C.red}${C.bold}  ✖ Xatolik:${C.reset} --text (-t) argumenti majburiy.\n`);
+    process.exitCode = 1;
     return;
   }
 
-  if (!args.text) {
-    console.error('Xatolik: --text argumenti majburiy. --help ni ko\'ring.');
+  const engineName = args.engine.toLowerCase();
+  if (!engines[engineName]) {
+    console.error(`\n${C.red}${C.bold}  ✖ Xatolik:${C.reset} Noma'lum engine: "${args.engine}"`);
+    console.error(`  ${C.dim}Mavjud: ${Object.keys(engines).join(', ')}${C.reset}\n`);
     process.exitCode = 1;
     return;
   }
 
   if (!Number.isFinite(args.speed) || args.speed <= 0) {
-    console.error('Xatolik: --speed musbat son bo\'lishi kerak.');
+    console.error(`\n${C.red}${C.bold}  ✖ Xatolik:${C.reset} --speed musbat son bo'lishi kerak.\n`);
     process.exitCode = 1;
     return;
   }
 
-  if (args.output) {
-    try {
-      const outputPath = await saveWithGTTS(args.text, args.lang, args.output);
-      console.log(`MP3 saqlandi: ${outputPath}`);
+  const engine = engines[engineName];
+  let text = args.noNormalize ? args.text : processText(args.text);
+  const chunks = splitIntoChunks(text);
+
+  console.log(`\n${C.bold}${C.cyan}  🔊 TextToVoice${C.reset}`);
+  console.log(`  ${C.dim}${'─'.repeat(45)}${C.reset}`);
+  console.log(`  ${C.green}✓${C.reset} ${C.dim}${chunks.length} ta bo'lakka ajratildi${C.reset}`);
+  console.log(`  ${C.dim}Engine: ${C.bold}${engineName}${C.reset}`);
+  if (args.voice)                  console.log(`  ${C.dim}Voice:  ${args.voice}${C.reset}`);
+  if (engineName === 'openai')     console.log(`  ${C.dim}Aksent: ${C.magenta}${args.accent}${C.reset}`);
+  if (args.output)                 console.log(`  ${C.dim}Output: ${args.output}${C.reset}`);
+  console.log(`  ${C.dim}${'─'.repeat(45)}${C.reset}`);
+
+  try {
+    if (engineName === 'say') {
+      for (let i = 0; i < chunks.length; i++) {
+        showProgress(i + 1, chunks.length, `"${chunks[i].slice(0, 30)}..."`);
+        await engine.synthesize(chunks[i], {
+          voice: args.voice, speed: args.speed, pauseMs: args.pauseMs,
+        });
+      }
+      console.log(`\n  ${C.green}${C.bold}✓ Matn muvaffaqiyatli eshittirildi!${C.reset}\n`);
       return;
-    } catch (err) {
-      console.error('gTTS bilan MP3 yaratishda xatolik:', err.message || err);
+    }
+
+    if (!args.output) {
+      console.error(`\n${C.red}${C.bold}  ✖ Xatolik:${C.reset} ${engineName} uchun --output (-o) majburiy.\n`);
       process.exitCode = 1;
       return;
     }
-  }
 
-  if (!isSystemTtsAvailable()) {
-    console.error('Tizim TTS engine topilmadi (festival/espeak).');
-    console.error('Yechim: festival/espeak o\'rnating yoki --output bilan MP3 yarating.');
-    console.error('Misol: node index.js --text "Salom" --lang uz --output ./audio/salom.mp3');
-    process.exitCode = 1;
-    return;
-  }
+    showProgress(1, 2, 'Audio yaratilmoqda...');
 
-  try {
-    await speakWithSay(args.text, args.voice, args.speed);
-    console.log('Matn eshittirildi.');
+    const outputPath = await engine.synthesize(chunks.join(' '), {
+      lang:   args.lang,
+      output: args.output,
+      voice:  args.voice || (engineName === 'openai' ? 'alloy' : undefined),
+      model:  args.model,
+      speed:  args.speed,
+      accent: args.accent,
+      apiUrl: args.url,
+    });
+
+    showProgress(2, 2, 'Tayyor!');
+
+    const sizeKB = (fs.statSync(outputPath).size / 1024).toFixed(1);
+    console.log(`\n  ${C.green}${C.bold}✓ MP3 saqlandi!${C.reset}`);
+    console.log(`  ${C.dim}Fayl: ${outputPath}${C.reset}`);
+    console.log(`  ${C.dim}Hajm: ${sizeKB} KB${C.reset}\n`);
+
   } catch (err) {
-    const message = err && err.message ? err.message : String(err);
-    console.error('Matnni eshittirishda xatolik:', message);
+    console.error(`\n${C.red}${C.bold}  ✖ Xatolik:${C.reset} ${err.message || err}\n`);
     process.exitCode = 1;
   }
 }
